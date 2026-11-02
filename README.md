@@ -1,7 +1,21 @@
-# wf-shell
+# wf-shell-gtk3
 
-wf-shell is a repository which contains the various components needed to built a fully functional DE based around wayfire.
-Currently it has only a GTK-based panel and background client.
+wf-shell-gtk3 is cloned from main wf-shell repo at the pint of wf-shell migration to gtk4.
+
+The purpose of this project is to create lightweight robust panel with multi-output support and deep wayfire integration 
+to be used in MATE desktop in addition to main mate-panel or as a replacement, and simple and fast wallpaper app to
+replace more heavy caja functionality  combining wallpper and desktop icons fopr those who do not want icons.
+
+Changes done so far
+
+Backported some usefull config options - sizes, spacing etc.
+Backported language widget to control/show keyboard layout
+Added right-click option to battery widget to open mate-power-statistic dialog.
+Added right-clock optionb to volume control to open mate-mixer app.
+Removed dock application to make things simple - we target panel and background only.
+Removed network widget. It is too far from nm-applet and bluez applet functionality whch integrates perfectly
+Added right-click option on launcher to remove launcher from launchers plugin
+Added right-click option on the menu item to add menu item to launchers.
 
 # Dependencies
 
