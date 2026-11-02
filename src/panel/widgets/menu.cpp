@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <sstream>
+#include <fstream>
 
 #include <cassert>
 #include <giomm/icon.h>
@@ -57,6 +58,92 @@ WfMenuCategoryButton::WfMenuCategoryButton(WayfireMenu *_menu, std::string _cate
 void WfMenuCategoryButton::on_click()
 {
     menu->set_category(category);
+}
+
+static std::string menu_trim(const std::string& str)
+{
+    auto begin = str.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos)
+    {
+        return "";
+    }
+
+    auto end = str.find_last_not_of(" \t\r\n");
+    return str.substr(begin, end - begin + 1);
+}
+
+/* Append a "launcher_<name> = <value>" entry to the [panel] section of the
+ * config file, keeping all other lines (including comments) untouched. A
+ * unique key is generated if the desired key is already taken. */
+static void add_launcher_to_config_file(const std::string& path,
+    const std::string& base_key, const std::string& value)
+{
+    std::vector<std::string> lines;
+    std::set<std::string> existing;
+    std::ifstream in(path);
+    if (in.is_open())
+    {
+        std::string line, current;
+        while (std::getline(in, line))
+        {
+            lines.push_back(line);
+            auto trimmed = menu_trim(line);
+            if (!trimmed.empty() && trimmed.front() == '[' && trimmed.back() == ']')
+            {
+                current = menu_trim(trimmed.substr(1, trimmed.size() - 2));
+            } else if (current == "panel" && !trimmed.empty() &&
+                trimmed.front() != '#' && trimmed.find('=') != std::string::npos)
+            {
+                existing.insert(menu_trim(trimmed.substr(0, trimmed.find('='))));
+            }
+        }
+
+        in.close();
+    }
+
+    auto key = base_key;
+    for (int i = 1; existing.count(key); i++)
+    {
+        key = base_key + "_" + std::to_string(i);
+    }
+
+    const std::string new_line = key + " = " + value;
+
+    /* Find the [panel] section and insert right after its header */
+    for (size_t i = 0; i < lines.size(); i++)
+    {
+        auto trimmed = menu_trim(lines[i]);
+        if (trimmed == "[panel]")
+        {
+            lines.insert(lines.begin() + i + 1, new_line);
+            break;
+        }
+    }
+
+    /* No [panel] section found, append one */
+    bool has_panel = std::any_of(lines.begin(), lines.end(),
+        [] (const std::string& l) { return menu_trim(l) == "[panel]"; });
+    if (!has_panel)
+    {
+        if (!lines.empty())
+        {
+            lines.push_back("");
+        }
+
+        lines.push_back("[panel]");
+        lines.push_back(new_line);
+    }
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out.is_open())
+    {
+        return;
+    }
+
+    for (auto& l : lines)
+    {
+        out << l << "\n";
+    }
 }
 
 WfMenuMenuItem::WfMenuMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app) :
@@ -124,6 +211,24 @@ WfMenuMenuItem::WfMenuMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppI
         m_action_menu.append(*menu_item);
     }
 
+    /* Right-click context menu: edit the menu, or add this entry to the
+     * launchers list */
+    m_edit_item.set_label("Edit menu");
+    m_edit_item.signal_activate().connect([] ()
+    {
+        g_spawn_command_line_async("/usr/bin/mozo", NULL);
+    });
+    m_add_item.set_label("Add to launchers");
+    m_add_item.signal_activate().connect([this] ()
+    {
+        add_to_launchers();
+        menu->hide_menu();
+    });
+    m_context_menu.append(m_edit_item);
+    m_context_menu.append(m_add_item);
+    m_context_menu.attach_to_widget(*this);
+    m_context_menu.show_all();
+
     add(m_padding_box);
     get_style_context()->add_class("app-button");
     /* Can accept Enter/Return from search_box */
@@ -133,7 +238,7 @@ WfMenuMenuItem::WfMenuMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppI
     this->signal_activate().connect_notify(
         sigc::mem_fun(this, &WfMenuMenuItem::on_click));
     /* Click doesn't automatically result in activate, here we get it ourselves
-     * Doubles up as a right-click catcher for action menu popup */
+     * Doubles up as a right-click catcher for the context menu popup */
     event_box->signal_button_release_event().connect(
         [this] (GdkEventButton *ev) -> bool
     {
@@ -142,14 +247,14 @@ WfMenuMenuItem::WfMenuMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppI
             on_click();
         }
 
-        if (m_has_actions && (ev->button == GDK_BUTTON_SECONDARY) && (ev->type == GDK_BUTTON_RELEASE))
+        if ((ev->button == GDK_BUTTON_SECONDARY) && (ev->type == GDK_BUTTON_RELEASE))
         {
             if (menu->menu_list)
             {
-                m_action_menu.popup_at_widget(this, Gdk::GRAVITY_NORTH_EAST, Gdk::GRAVITY_NORTH_WEST, NULL);
+                m_context_menu.popup_at_widget(this, Gdk::GRAVITY_NORTH_EAST, Gdk::GRAVITY_NORTH_WEST, NULL);
             } else
             {
-                m_action_menu.popup_at_widget(this, Gdk::GRAVITY_SOUTH, Gdk::GRAVITY_NORTH, NULL);
+                m_context_menu.popup_at_widget(this, Gdk::GRAVITY_SOUTH, Gdk::GRAVITY_NORTH, NULL);
             }
 
             return true;
@@ -157,6 +262,35 @@ WfMenuMenuItem::WfMenuMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppI
 
         return false;
     });
+}
+
+void WfMenuMenuItem::add_to_launchers()
+{
+    /* Prefer the desktop-file identifier (e.g. "firefox.desktop"), which is
+     * what the launchers widget expects; fall back to the absolute filename. */
+    auto desktop_name = std::string(m_app_info->get_id());
+    if (desktop_name.empty())
+    {
+        auto filename = std::string(m_app_info->get_filename());
+        auto slash = filename.find_last_of('/');
+        desktop_name = (slash == std::string::npos) ? filename : filename.substr(slash + 1);
+    }
+
+    if (desktop_name.empty())
+    {
+        return;
+    }
+
+    auto base = desktop_name;
+    const std::string suffix = ".desktop";
+    if (base.size() > suffix.size() &&
+        base.compare(base.size() - suffix.size(), suffix.size(), suffix) == 0)
+    {
+        base = base.substr(0, base.size() - suffix.size());
+    }
+
+    add_launcher_to_config_file(WayfireShellApp::get().get_config_file(),
+        "launcher_" + base, desktop_name);
 }
 
 void WfMenuMenuItem::on_click()

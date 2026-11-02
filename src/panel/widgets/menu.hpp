@@ -66,12 +66,15 @@ class WfMenuMenuItem : public Gtk::FlowBoxChild
     Gtk::Image m_image;
     Gtk::Label m_label;
     Gtk::Menu m_action_menu;
+    Gtk::Menu m_context_menu;
+    Gtk::MenuItem m_edit_item, m_add_item;
 
     bool m_has_actions = false;
     uint32_t m_search_value = 0;
 
     Glib::RefPtr<Gio::DesktopAppInfo> m_app_info;
     void on_click();
+    void add_to_launchers();
 };
 
 class WayfireLogoutUIButton
