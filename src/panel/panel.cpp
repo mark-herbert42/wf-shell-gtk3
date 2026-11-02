@@ -22,7 +22,6 @@
 #include "widgets/menu.hpp"
 #include "widgets/clock.hpp"
 #include "widgets/launchers.hpp"
-#include "widgets/network.hpp"
 #include "widgets/spacing.hpp"
 #include "widgets/separator.hpp"
 #ifdef HAVE_PULSE
@@ -166,11 +165,6 @@ class WayfirePanel::impl
         if (name == "clock")
         {
             return Widget(new WayfireClock());
-        }
-
-        if (name == "network")
-        {
-            return Widget(new WayfireNetworkInfo());
         }
 
         if (name == "battery")

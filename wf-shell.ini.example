@@ -14,13 +14,13 @@ randomize = 0
 [panel]
 # widgets_* is a space-separated list of widgets to be displayed
 # at the corresponding part of the panel
-# Supported widgets are: launchers clock network battery window-list volume menu notifications tray command-output
+# Supported widgets are: launchers clock battery window-list volume menu notifications tray command-output
 # Special widgets are "spacing" and "separator" widgets, they can be used to add padding everywhere on the panel
 # To use them, just append the amount of pixels you want as a padding
 # to the word "spacing" or "separator" and use it as a plugin
 widgets_left = menu spacing4 launchers window-list
 widgets_center = none
-widgets_right = command-output tray notifications volume network battery clock
+widgets_right = command-output tray notifications volume battery clock
 
 # The minimal size of the panel. Note that some widgets might force panel bigger than this size.
 # All widgets also have individual settings for size
@@ -87,17 +87,6 @@ battery_icon_invert = 1
 # Font to use in the battery percentage indicator
 battery_font = default
 
-
-# Configuration for the network widget
-# Whether to display connection details, for ex. Wifi AP name
-network_status = 1
-
-network_status_font = DejaVu Sans:style=Book 10
-# network_icon_size = 30
-network_icon_invert_color = 1
-
-# whether to colour the wifi signal strength
-network_status_use_color = yes
 
 # Show a list of application categories in menu
 menu_show_categories = false
