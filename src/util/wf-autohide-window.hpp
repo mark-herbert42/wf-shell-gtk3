@@ -112,6 +112,7 @@ class WayfireAutohidingWindow : public Gtk::Window
 
 
     int32_t last_hotspot_height = -1;
+    int last_hotspot_edge       = -1;
     bool input_inside_panel     = false;
     zwf_hotspot_v2 *edge_hotspot  = NULL;
     zwf_hotspot_v2 *panel_hotspot = NULL;

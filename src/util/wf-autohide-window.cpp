@@ -193,14 +193,20 @@ static zwf_hotspot_v2_listener hotspot_listener = {
 
 void WayfireAutohidingWindow::setup_hotspot()
 {
-    /* No need to recreate hotspots if the height didn't change */
-    if ((this->get_allocated_height() == last_hotspot_height) && (edge_offset == last_edge_offset))
+    auto position = check_position(this->position);
+    uint32_t edge = (position == WF_WINDOW_POSITION_TOP) ?
+        ZWF_OUTPUT_V2_HOTSPOT_EDGE_TOP : ZWF_OUTPUT_V2_HOTSPOT_EDGE_BOTTOM;
+
+    /* No need to recreate hotspots if nothing relevant changed */
+    if ((this->get_allocated_height() == last_hotspot_height) &&
+        (edge_offset == last_edge_offset) && (edge == (uint32_t)last_hotspot_edge))
     {
         return;
     }
 
     this->last_hotspot_height = get_allocated_height();
     this->last_edge_offset    = edge_offset;
+    this->last_hotspot_edge   = edge;
 
     if (this->edge_hotspot)
     {
@@ -211,10 +217,6 @@ void WayfireAutohidingWindow::setup_hotspot()
     {
         zwf_hotspot_v2_destroy(panel_hotspot);
     }
-
-    auto position = check_position(this->position);
-    uint32_t edge = (position == WF_WINDOW_POSITION_TOP) ?
-        ZWF_OUTPUT_V2_HOTSPOT_EDGE_TOP : ZWF_OUTPUT_V2_HOTSPOT_EDGE_BOTTOM;
 
     this->edge_hotspot = zwf_output_v2_create_hotspot(output->output,
         edge, edge_offset, autohide_show_delay);
