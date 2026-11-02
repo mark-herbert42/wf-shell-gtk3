@@ -121,6 +121,25 @@
 		<_short>Clock Font</_short>
 		<default>default</default>
 	</option>
+	<option name="weather_location" type="string">
+		<_short>Weather Location</_short>
+		<long_description>Selected weather location, encoded as "Name;CODE;LAT;LON".</long_description>
+		<default></default>
+	</option>
+	<option name="weather_temperature_unit" type="string">
+		<_short>Weather Temperature Unit</_short>
+		<default>centigrade</default>
+	</option>
+	<option name="weather_speed_unit" type="string">
+		<_short>Weather Speed Unit</_short>
+		<default>ms</default>
+	</option>
+	<option name="weather_update_interval" type="int">
+		<_short>Weather Update Interval</_short>
+		<long_description>Weather refresh interval in seconds.</long_description>
+		<default>600</default>
+		<min>10</min>
+	</option>
 	</group>
 	<group>
 	<_short>Battery</_short>

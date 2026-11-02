@@ -20,7 +20,7 @@
 #include "widgets/command-output.hpp"
 #include "widgets/language.hpp"
 #include "widgets/menu.hpp"
-#include "widgets/clock.hpp"
+#include "widgets/clock/clock.hpp"
 #include "widgets/launchers.hpp"
 #include "widgets/spacing.hpp"
 #include "widgets/separator.hpp"
