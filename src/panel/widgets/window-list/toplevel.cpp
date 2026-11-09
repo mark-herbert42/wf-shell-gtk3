@@ -20,6 +20,7 @@
 namespace
 {
 extern zwlr_foreign_toplevel_handle_v1_listener toplevel_handle_v1_impl;
+extern xfce_foreign_toplevel_handle_v1_listener xfce_handle_v1_impl;
 }
 
 namespace IconProvider
@@ -34,6 +35,11 @@ class WayfireToplevel::impl
     std::vector<zwlr_foreign_toplevel_handle_v1*> children;
     uint32_t state;
 
+    /* xfce bridge: which workspace this toplevel is currently on */
+    xfce_foreign_toplevel_handle_v1 *xfce_handle = nullptr;
+    ext_workspace_handle_v1 *current_ws = nullptr;
+    bool output_present = false;
+
     Gtk::Button button;
     Gtk::HBox button_contents;
     Gtk::Image image;
@@ -46,6 +52,7 @@ class WayfireToplevel::impl
     Glib::ustring app_id, title;
 
     WfOption<bool> middle_click_close{"panel/middle_click_close"};
+    WfOption<int> max_chars{"panel/window_list_max_chars"};
 
   public:
     WayfireWindowList *window_list;
@@ -57,8 +64,18 @@ class WayfireToplevel::impl
         zwlr_foreign_toplevel_handle_v1_add_listener(handle,
             &toplevel_handle_v1_impl, this);
 
+        if (window_list && window_list->xfce_manager)
+        {
+            xfce_handle =
+                xfce_foreign_toplevel_manager_private_v1_get_xfce_foreign_toplevel_handle(
+                window_list->xfce_manager, handle);
+            xfce_foreign_toplevel_handle_v1_add_listener(xfce_handle,
+                &xfce_handle_v1_impl, this);
+        }
+
         button.get_style_context()->add_class("window-button");
         button_contents.add(image);
+        label.set_ellipsize(Pango::ELLIPSIZE_END);
         button_contents.add(label);
         button_contents.set_halign(Gtk::ALIGN_START);
         button.add(button_contents);
@@ -120,6 +137,11 @@ class WayfireToplevel::impl
             sigc::mem_fun(this, &WayfireToplevel::impl::on_drag_end));
 
         this->window_list = window_list;
+
+        max_chars.set_callback([this] ()
+        {
+            set_max_width(max_width);
+        });
     }
 
     int grab_off_x;
@@ -390,20 +412,33 @@ class WayfireToplevel::impl
         return preferred_width;
     }
 
+    /* Number of title characters we are willing to show, limited by both
+     * the max_chars option (if set) and the current title length. */
+    int limit_chars(int title_len)
+    {
+        int limit = max_chars;
+        if ((limit > 0) && (limit < title_len))
+        {
+            return limit;
+        }
+
+        return title_len;
+    }
+
     void set_max_width(int width)
     {
         this->max_width = width;
         if (max_width == 0)
         {
             this->button.set_size_request(-1, -1);
-            this->label.set_label(title);
+            this->label.set_text(shorten_title(limit_chars(title.length())));
             return;
         }
 
         this->button.set_size_request(width, -1);
 
         int show_chars = 0;
-        for (show_chars = title.length(); show_chars > 0; show_chars--)
+        for (show_chars = limit_chars(title.length()); show_chars > 0; show_chars--)
         {
             this->label.set_text(shorten_title(show_chars));
             if (get_button_preferred_width() <= max_width)
@@ -439,6 +474,41 @@ class WayfireToplevel::impl
     {
         auto& container = window_list->box;
         container.remove(button);
+    }
+
+    ext_workspace_handle_v1* get_workspace()
+    {
+        return current_ws;
+    }
+
+    void set_workspace(ext_workspace_handle_v1 *ws)
+    {
+        current_ws = ws;
+        window_list->refresh_visibility();
+    }
+
+    /**
+     * Add or remove the button according to the current visibility rules:
+     * the toplevel must be on our output, must not have a parent (children are
+     * hidden) and, if the option is enabled, must be on the active workspace.
+     */
+    void update_visibility()
+    {
+        auto& container = window_list->box;
+        bool show = output_present && !parent &&
+            window_list->on_current_workspace(current_ws);
+        bool present = (button.get_parent() != nullptr);
+
+        if (show && !present)
+        {
+            container.pack_start(button, false, false);
+            container.show_all();
+        } else if (!show && present)
+        {
+            container.remove(button);
+        }
+
+        update_menu_item_text();
     }
 
     void update_menu_item_text()
@@ -503,33 +573,33 @@ class WayfireToplevel::impl
             m_drag_timeout.disconnect();
         }
 
+        if (xfce_handle)
+        {
+            xfce_foreign_toplevel_handle_v1_destroy(xfce_handle);
+            xfce_handle = nullptr;
+        }
+
         zwlr_foreign_toplevel_handle_v1_destroy(handle);
     }
 
     void handle_output_enter(wl_output *output)
     {
-        if (this->parent)
-        {
-            return;
-        }
-
-        auto& container = window_list->box;
         if (window_list->output->wo == output)
         {
-            container.add(button);
-            container.show_all();
+            output_present = true;
         }
 
-        update_menu_item_text();
+        update_visibility();
     }
 
     void handle_output_leave(wl_output *output)
     {
-        auto& container = window_list->box;
         if (window_list->output->wo == output)
         {
-            container.remove(button);
+            output_present = false;
         }
+
+        update_visibility();
     }
 };
 
@@ -562,6 +632,16 @@ void WayfireToplevel::set_parent(zwlr_foreign_toplevel_handle_v1 *parent)
 uint32_t WayfireToplevel::get_state()
 {
     return pimpl->get_state();
+}
+
+void WayfireToplevel::update_visibility()
+{
+    pimpl->update_visibility();
+}
+
+void WayfireToplevel::set_workspace(ext_workspace_handle_v1 *ws)
+{
+    pimpl->set_workspace(ws);
 }
 
 WayfireToplevel::~WayfireToplevel() = default;
@@ -659,13 +739,9 @@ static void handle_toplevel_parent(void *data, toplevel_t handle, toplevel_t par
     auto impl = static_cast<WayfireToplevel::impl*>(data);
     if (!parent)
     {
-        if (impl->get_parent())
-        {
-            impl->handle_output_enter(impl->window_list->output->wo);
-        }
-
         remove_child_from_parent(impl, handle);
         impl->set_parent(parent);
+        impl->update_visibility();
         return;
     }
 
@@ -676,7 +752,7 @@ static void handle_toplevel_parent(void *data, toplevel_t handle, toplevel_t par
     }
 
     impl->set_parent(parent);
-    impl->remove_button();
+    impl->update_visibility();
 }
 
 namespace
@@ -690,6 +766,35 @@ struct zwlr_foreign_toplevel_handle_v1_listener toplevel_handle_v1_impl = {
     .done   = handle_toplevel_done,
     .closed = handle_toplevel_closed,
     .parent = handle_toplevel_parent
+};
+}
+
+static void handle_xfce_workspace_enter(void *data,
+    xfce_foreign_toplevel_handle_v1*, ext_workspace_handle_v1 *ws)
+{
+    auto impl = static_cast<WayfireToplevel::impl*>(data);
+    impl->set_workspace(ws);
+}
+
+static void handle_xfce_workspace_leave(void *data,
+    xfce_foreign_toplevel_handle_v1*, ext_workspace_handle_v1 *ws)
+{
+    auto impl = static_cast<WayfireToplevel::impl*>(data);
+    if (impl->get_workspace() == ws)
+    {
+        impl->set_workspace(nullptr);
+    }
+}
+
+namespace
+{
+struct xfce_foreign_toplevel_handle_v1_listener xfce_handle_v1_impl = {
+    .state           = [] (void*, xfce_foreign_toplevel_handle_v1*, wl_array*) {},
+    .icon_name       = [] (void*, xfce_foreign_toplevel_handle_v1*, const char*) {},
+    .icon_size       = [] (void*, xfce_foreign_toplevel_handle_v1*, uint32_t, uint32_t) {},
+    .no_icon         = [] (void*, xfce_foreign_toplevel_handle_v1*) {},
+    .workspace_enter = handle_xfce_workspace_enter,
+    .workspace_leave = handle_xfce_workspace_leave,
 };
 }
 

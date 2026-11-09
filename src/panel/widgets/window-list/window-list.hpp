@@ -4,6 +4,10 @@
 #include "../../widget.hpp"
 #include "panel.hpp"
 #include <wlr-foreign-toplevel-management-unstable-v1-client-protocol.h>
+#include <ext-workspace-v1-client-protocol.h>
+#include <xfce-foreign-toplevel-management-private-v1-client-protocol.h>
+#include <wayfire/config/types.hpp>
+#include "wf-option-wrap.hpp"
 
 #include <gtkmm/button.h>
 #include <gtkmm/scrolledwindow.h>
@@ -67,12 +71,59 @@ class WayfireWindowList : public WayfireWidget
     WayfireWindowListBox box;
     Gtk::ScrolledWindow scrolled_window;
 
+    /* ext-workspace + xfce bridge, used to filter by current workspace */
+    ext_workspace_manager_v1 *ws_manager = nullptr;
+    xfce_foreign_toplevel_manager_private_v1 *xfce_manager = nullptr;
+    std::vector<ext_workspace_handle_v1*> ws_handles;
+    std::map<ext_workspace_handle_v1*, uint32_t> ws_states;
+    ext_workspace_handle_v1 *current_workspace = nullptr;
+    /* The name of the active workspace on this output. The xfce bridge may
+     * hand us an ext_workspace_handle_v1 object from a different client binding
+     * than ours, so object identity cannot be used across monitors; the
+     * compositor-assigned name is stable and shared, so we compare by name. */
+    std::string current_workspace_name;
+    WfOption<bool> only_current_workspace{"panel/only_current_workspace"};
+
+    /* Workspaces are grouped per output. To know the *active workspace of this
+     * output* (and not of some other monitor) we track which output each group
+     * belongs to and which workspaces belong to each group. */
+    std::vector<ext_workspace_group_handle_v1*> ws_groups;
+    std::map<ext_workspace_group_handle_v1*, wl_output*> ws_group_output;
+    std::map<ext_workspace_group_handle_v1*,
+        std::vector<ext_workspace_handle_v1*>> ws_group_workspaces;
+
     WayfireWindowList(WayfireOutput *output);
     virtual ~WayfireWindowList();
 
     void handle_toplevel_manager(zwlr_foreign_toplevel_manager_v1 *manager);
     void handle_toplevel_closed(zwlr_foreign_toplevel_handle_v1 *handle);
     void handle_new_toplevel(zwlr_foreign_toplevel_handle_v1 *handle);
+
+    void handle_ws_manager(ext_workspace_manager_v1 *manager);
+    void handle_xfce_manager(xfce_foreign_toplevel_manager_private_v1 *manager);
+    void handle_workspace_created(ext_workspace_handle_v1 *ws);
+    void handle_workspace_state(ext_workspace_handle_v1 *ws, uint32_t state);
+    void handle_workspace_removed(ext_workspace_handle_v1 *ws);
+    void handle_workspace_done();
+
+    void handle_workspace_group(ext_workspace_group_handle_v1 *group);
+    void handle_group_output_enter(ext_workspace_group_handle_v1 *group,
+        wl_output *output);
+    void handle_group_output_leave(ext_workspace_group_handle_v1 *group,
+        wl_output *output);
+    void handle_group_workspace_enter(ext_workspace_group_handle_v1 *group,
+        ext_workspace_handle_v1 *ws);
+    void handle_group_workspace_leave(ext_workspace_group_handle_v1 *group,
+        ext_workspace_handle_v1 *ws);
+    void handle_group_removed(ext_workspace_group_handle_v1 *group);
+
+    /** Recompute current_workspace as the active workspace of this output's group */
+    void recompute_current_workspace();
+
+    /** @return true if a toplevel on @ws should be shown in this list */
+    bool on_current_workspace(ext_workspace_handle_v1 *ws);
+    /** Re-evaluate the visibility of every toplevel button */
+    void refresh_visibility();
 
     wayfire_config *get_config();
 

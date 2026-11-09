@@ -31,6 +31,12 @@ class WayfireToplevel
     zwlr_foreign_toplevel_handle_v1 *get_parent();
     void set_parent(zwlr_foreign_toplevel_handle_v1*);
     std::vector<zwlr_foreign_toplevel_handle_v1*>& get_children();
+
+    /** Recompute whether the button should be added to or removed from the box */
+    void update_visibility();
+    /** Update the workspace this toplevel is currently on */
+    void set_workspace(ext_workspace_handle_v1 *ws);
+
     ~WayfireToplevel();
 
     class impl;

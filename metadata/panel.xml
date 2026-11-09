@@ -379,6 +379,17 @@ Set to -1 to only run it by clicking the button.
 		<_short>Middle Click Closes Windows</_short>
 		<default>false</default>
 	</option>
+	<option name="only_current_workspace" type="bool">
+		<_short>Only Show Current Workspace Windows</_short>
+		<long_description>When enabled, the window-list shows only the windows that belong to the currently active workspace. Requires the compositor to support the ext-workspace and xfce foreign toplevel management protocols.</long_description>
+		<default>false</default>
+	</option>
+	<option name="window_list_max_chars" type="int">
+		<_short>Max Characters To Display</_short>
+		<_long>Maximum number of characters of a window title shown on a window-list button. The title is cut to this length if it is longer; the full title is always shown in the tooltip. Set to 0 for no limit.</_long>
+		<min>0</min>
+		<default>0</default>
+	</option>
 	</group>
 	</plugin>
 </wf-shell>

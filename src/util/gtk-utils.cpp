@@ -71,6 +71,27 @@ void set_image_pixbuf(Gtk::Image & image, Glib::RefPtr<Gdk::Pixbuf> pixbuf, int 
     cairo_surface_destroy(cairo_surface);
 }
 
+/* Loads an icon from the theme, returning null if it could not be loaded
+ * (for example, the icon file exists but its contents are broken) */
+static Glib::RefPtr<Gdk::Pixbuf> load_icon_from_theme_safe(
+    const Glib::RefPtr<Gtk::IconTheme>& icon_theme, std::string icon_name, int size)
+{
+    try {
+        auto pbuff = icon_theme->load_icon(icon_name, size,
+            Gtk::ICON_LOOKUP_FORCE_SIZE);
+        return pbuff->scale_simple(size, size, Gdk::INTERP_BILINEAR);
+    } catch (Glib::Error& err)
+    {
+        std::cerr << "Error loading icon '" << icon_name << "': "
+                  << err.what() << std::endl;
+        return {};
+    } catch (...)
+    {
+        std::cerr << "Failed to load icon: " << icon_name << std::endl;
+        return {};
+    }
+}
+
 void set_image_icon(Gtk::Image& image, std::string icon_name, int size,
     const WfIconLoadOptions& options,
     const Glib::RefPtr<Gtk::IconTheme>& icon_theme)
@@ -86,8 +107,7 @@ void set_image_icon(Gtk::Image& image, std::string icon_name, int size,
     /* Get from theme if possible */
     if (icon_theme->lookup_icon(icon_name, scaled_size))
     {
-        pbuff = icon_theme->load_icon(icon_name, scaled_size, Gtk::ICON_LOOKUP_FORCE_SIZE)
-            ->scale_simple(scaled_size, scaled_size, Gdk::INTERP_BILINEAR);
+        pbuff = load_icon_from_theme_safe(icon_theme, icon_name, scaled_size);
     }
 
     /* Get from filesystem if necessary */
@@ -100,9 +120,10 @@ void set_image_icon(Gtk::Image& image, std::string icon_name, int size,
     {
         if (icon_theme->lookup_icon("image-missing", scaled_size))
         {
-            pbuff = icon_theme->load_icon("image-missing", scaled_size, Gtk::ICON_LOOKUP_FORCE_SIZE)
-                ->scale_simple(scaled_size, scaled_size, Gdk::INTERP_BILINEAR);
-        } else
+            pbuff = load_icon_from_theme_safe(icon_theme, "image-missing", scaled_size);
+        }
+
+        if (!pbuff)
         {
             return;
         }
