@@ -277,11 +277,27 @@ static void collect_locations(MateWeatherLocation *loc,
 
 std::vector<WeatherLocationEntry> Weather::list_locations()
 {
-    std::vector<WeatherLocationEntry> out;
-    auto world = mateweather_location_new_world(FALSE);
-    collect_locations(world, out);
-    mateweather_location_unref(world);
-    return out;
+    /* The world database is static data, and libmateweather is not safe to
+     * re-parse via mateweather_location_new_world() more than once in a single
+     * process (a second call aborts inside libxml2, which crashed the panel
+     * when a second monitor created another clock widget). Parse it once and
+     * cache the result. */
+    static std::vector<WeatherLocationEntry> cache;
+    static bool loaded = false;
+
+    if (!loaded)
+    {
+        auto world = mateweather_location_new_world(FALSE);
+        if (world)
+        {
+            collect_locations(world, cache);
+            mateweather_location_unref(world);
+        }
+
+        loaded = true;
+    }
+
+    return cache;
 }
 
 std::string Weather::encode(const WeatherLocationEntry& loc)

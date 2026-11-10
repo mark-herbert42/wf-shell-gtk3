@@ -193,7 +193,7 @@ void WayfireClock::init(Gtk::HBox *container)
     popover_box.pack_start(select_button, false, false);
     popover_box.pack_start(selection_area, true, true);
     popover_box.pack_start(calendar, false, false);
-
+    
     button->get_popover()->get_style_context()->add_class("clock-popover");
     button->get_popover()->add(popover_box);
     button->get_popover()->signal_show().connect_notify(
@@ -333,6 +333,34 @@ void WayfireClock::open_selector()
 {
     selection_area.show_all();
     search_entry.grab_focus();
+
+    auto rebind = [this]
+    {
+        auto *p = button ? button->get_popover() : nullptr;
+        if (!p)
+        {
+            return;
+        }
+
+        p->unmap();
+        p->map();
+        p->queue_resize();
+        p->queue_allocate();
+    };
+
+    rebind();
+
+
+    /* The revealer's new size is only committed on the next layout pass, so
+     * re-bind once more after that: otherwise the first click leaves the
+     * freshly exposed area broken until the popover is opened a second time
+     * (when the size is already correct). */
+    Glib::signal_timeout().connect([rebind] () -> bool
+    {
+        rebind();
+        return false;
+    }, 50);
+
 }
 
 bool WayfireClock::update_label()
